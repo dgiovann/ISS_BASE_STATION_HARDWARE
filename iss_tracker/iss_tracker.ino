@@ -28,13 +28,14 @@ IPAddress ip(192,168,1, 177);
 // (port 80 is default for HTTP):
 EthernetServer server(80);
 
-//Servos
+//Servo pins
 int pwmBase = 11;
-int pwmArm = 10;
+int pwmArm = 13;
 
-float azimuth = 0.0f;
-float elevation = 0.0f;
-char pointing = 0;
+//Global variables for azimuth and elevation
+int azi = 0;
+int ele = 0;
+int pointing = 0; //Either true or false;
 
 //RGB Matrix
 RGBmatrixPanel matrix(A, B, C, CLK, LAT, OE, false);
@@ -46,15 +47,15 @@ long hue = 0;
 void drawText(){
   // Clear background
   matrix.setCursor(1, 1);
-  matrix.setTextSize(2);
-  matrix.setTextWrap(false);
-  matrix.fill(0);
+  matrix.setTextSize(1);
+  matrix.setTextWrap(true);
+  matrix.fillScreen(0);
   
-  if(pointing == '1') {
+  if(pointing == 1) {
     matrix.setTextColor(RED);
     matrix.print(matrix_str);
   }
-  if(pointing == '0') {
+  if(pointing == 0) {
     matrix.setTextColor(GREEN);
     matrix.print("SEARCHING...");
   }
@@ -71,7 +72,9 @@ void getHTTP(){
   // listen for incoming clients
   EthernetClient client = server.available();
 
-  char* readString;
+  int i = 0;
+  char readString[255];
+  
   if (client) {
     Serial.println("new client");
     
@@ -80,7 +83,7 @@ void getHTTP(){
         char c = client.read();
         Serial.write(c);
         // c is the character read. Parse GET request here
-        readString += c; //TODO This is incorrect code
+        readString[i++] = c;
         if(c == '\n'){
           client.println("HTTP/1.1 200 OK");
           client.println("Content-Type: text/html");
@@ -89,32 +92,95 @@ void getHTTP(){
           client.println("0K");
             break;
         }
+        if (i > 254) break;
       }
     }
-    //String format should be ?azimuth,elevation,boolean\n
-    char* parsed_token = strtok(readString, "?,\n"); //Parse azimuth
-    azimuth = atof(parsed_token);
-    parsed_token = strtok(NULL, "?,\n"); //Parse elevation
-    elevation = atof(parsed_token);
-    parsed_token = strtok(NULL, "?,\n"); //Parse boolean
-    pointing = atoi(parsed_token);
+    readString[i] = '\0';
+    
+    // String format should be:                                                 
+    // GET http://192.168.1.177/?azimuth,elevation,pointing HTTPstuff\n         
+    char* parsed_token = strtok(readString, "?"); // Tokenize up to ?           
+                                                                                
+    // Parse azimuth                                                            
+    parsed_token = strtok(NULL, ",");
+    if (!parsed_token) return;    
+    int azimuth = atoi(parsed_token);                        
+    Serial.print("Azimuth: "); Serial.println(azimuth);   
+    
+    // Parse elevation                                                          
+    parsed_token = strtok(NULL, ",");
+    if (!parsed_token) return;                                             
+    int elevation = atoi(parsed_token);                      
+    Serial.print("Elevation: "); Serial.println(elevation);   
+    
+    // Parse pointing                                                           
+    parsed_token = strtok(NULL, " ");
+    if (!parsed_token) return;                                             
+    pointing = atoi(parsed_token);  
+    Serial.print("Pointing: "); Serial.println(pointing);
+    
+    //Makes a call to the LED Matrix to update based on pointer value
     drawText();
+    //Increments servos by the (azimuth - azi, elevation - ele);
+    point(azimuth,elevation);
+
   }
+  
     // give the web browser time to receive the data
     delay(5);
     // close the connection:
     client.stop();
-    Serial.println("client disonnected");
 }
 
-//Set the servos to rotate to the current azimuth and elevation
-void setServos(){
-    
+//Library command to move a continous rotation servo by a specified angle
+void moveServo(int angle, int pin) {
+  int gr = 1; // 1:1 Gear Ratio
+  if (pin == pwmBase) {
+    gr = 2.411; //Gear ratio for a Large to Medium Gear using Knex
+  }
+  int cnt = 0;
+  int numPulses = abs(floor(angle * gr * 2.0 / 3.0));
+  
+  while (cnt != numPulses) {
+     
+    if (cnt < numPulses){
+      
+      delayMicroseconds(20000);
+      digitalWrite(pin, HIGH);
+      if (angle > 0){
+        delayMicroseconds(1400); //CCW at mid-speed
+      }
+      else{
+        delayMicroseconds(1600); //CW at mid-speed
+      }
+      digitalWrite(pin, LOW);
+      //hasMoved = true;
+      cnt++;
+      
+    }
+  }
+  
+  delay(1);
+  
 }
 
-
+// Increments servo's by the absolute orientation given.
+void point(int a, int e) {
+  if( a != 0 && e != 0 ) {
+    moveServo(a - azi, pwmBase);
+    moveServo(e - ele, pwmArm);
+    azi = a;
+    ele = e;
+  }
+}
 
 void setup(){
+  pinMode(pwmBase, OUTPUT); 
+  pinMode(pwmArm, OUTPUT); 
+  digitalWrite(pwmBase, LOW);
+  digitalWrite(pwmArm, LOW);
+  moveServo(0, pwmArm);
+  moveServo(0, pwmBase);
   //Open serial communications and wait for port to open:
   Serial.begin(9600);
 
@@ -125,12 +191,10 @@ void setup(){
   Serial.print("server is at ");
   Serial.println(Ethernet.localIP());
   matrix.begin();
-//  drawText();
+  drawText();
 
 }
 
 void loop(){
     getHTTP();
-    setServos();
-    drawText();
 }
