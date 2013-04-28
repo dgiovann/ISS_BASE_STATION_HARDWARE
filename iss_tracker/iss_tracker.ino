@@ -50,7 +50,7 @@ void drawText(){
   matrix.setTextSize(1);
   matrix.setTextWrap(true);
   matrix.fillScreen(0);
-  
+
   if(pointing == 1) {
     matrix.setTextColor(RED);
     matrix.print(matrix_str);
@@ -59,25 +59,25 @@ void drawText(){
     matrix.setTextColor(GREEN);
     matrix.print("SEARCHING...");
   }
-  
+
   // Move text left (w/wrap), increase hue
   if((--textX) < textMin) textX = matrix.width();
   hue += 7;
-  
+
 }
 
 void getHTTP(){
   //String readString = String(100);
-  
+
   // listen for incoming clients
   EthernetClient client = server.available();
 
   int i = 0;
   char readString[255];
-  
+
   if (client) {
     Serial.println("new client");
-    
+
     while (client.connected()) {
       if (client.available()) {
         char c = client.read();
@@ -90,46 +90,49 @@ void getHTTP(){
           client.println("Connnection: close");
           client.println();
           client.println("0K");
-            break;
+          break;
         }
         if (i > 254) break;
       }
     }
     readString[i] = '\0';
-    
+
     // String format should be:                                                 
     // GET http://192.168.1.177/?azimuth,elevation,pointing HTTPstuff\n         
     char* parsed_token = strtok(readString, "?"); // Tokenize up to ?           
-                                                                                
+
     // Parse azimuth                                                            
     parsed_token = strtok(NULL, ",");
     if (!parsed_token) return;    
     int azimuth = atoi(parsed_token);                        
-    Serial.print("Azimuth: "); Serial.println(azimuth);   
-    
+    Serial.print("Azimuth: "); 
+    Serial.println(azimuth);   
+
     // Parse elevation                                                          
     parsed_token = strtok(NULL, ",");
     if (!parsed_token) return;                                             
     int elevation = atoi(parsed_token);                      
-    Serial.print("Elevation: "); Serial.println(elevation);   
-    
+    Serial.print("Elevation: "); 
+    Serial.println(elevation);   
+
     // Parse pointing                                                           
     parsed_token = strtok(NULL, " ");
     if (!parsed_token) return;                                             
     pointing = atoi(parsed_token);  
-    Serial.print("Pointing: "); Serial.println(pointing);
-    
+    Serial.print("Pointing: "); 
+    Serial.println(pointing);
+
     //Makes a call to the LED Matrix to update based on pointer value
     drawText();
     //Increments servos by the (azimuth - azi, elevation - ele);
     point(azimuth,elevation);
 
   }
-  
-    // give the web browser time to receive the data
-    delay(5);
-    // close the connection:
-    client.stop();
+
+  // give the web browser time to receive the data
+  delay(5);
+  // close the connection:
+  client.stop();
 }
 
 //Library command to move a continous rotation servo by a specified angle
@@ -140,15 +143,18 @@ void moveServo(int angle, int pin) {
   }
   int cnt = 0;
   int numPulses = abs(floor(angle * gr * 2.0 / 3.0));
-  
+
   while (cnt != numPulses) {
-     
+
     if (cnt < numPulses){
-      
+
       delayMicroseconds(20000);
       digitalWrite(pin, HIGH);
       if (angle > 0){
         delayMicroseconds(1400); //CCW at mid-speed
+      }
+      else if (angle == 0) {
+        delayMicroseconds(1500);
       }
       else{
         delayMicroseconds(1600); //CW at mid-speed
@@ -156,12 +162,12 @@ void moveServo(int angle, int pin) {
       digitalWrite(pin, LOW);
       //hasMoved = true;
       cnt++;
-      
+
     }
   }
-  
+
   delay(1);
-  
+
 }
 
 // Increments servo's by the absolute orientation given.
@@ -187,7 +193,7 @@ void setup(){
   // start the Ethernet connection and the server:
   Ethernet.begin(mac, ip);
   server.begin();
-  
+
   Serial.print("server is at ");
   Serial.println(Ethernet.localIP());
   matrix.begin();
@@ -196,5 +202,13 @@ void setup(){
 }
 
 void loop(){
-    getHTTP();
+
+  moveServo(180, pwmArm);
+  moveServo(90, pwmBase);
+  delay(2000);
+  moveServo(-180, pwmArm);
+  moveServo(-90, pwmBase);
+  delay(2000);
+  //    getHTTP();
 }
+
